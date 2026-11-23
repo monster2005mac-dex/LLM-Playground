@@ -80,6 +80,7 @@ header{position:relative;z-index:2;min-height:68px;padding:12px 22px;background:
 .btn:hover{transform:translateY(-2px);box-shadow:0 5px 0 color-mix(in srgb,var(--bd),#000 15%),0 11px 20px #0002;border-color:var(--ac)}
 .btn:active{transform:translateY(1px);box-shadow:0 1px 0 var(--bd)}
 .btn.on{background:linear-gradient(145deg,color-mix(in srgb,var(--ac),var(--p) 82%),var(--p2));border-color:color-mix(in srgb,var(--ac),var(--bd) 35%);color:var(--ac2);box-shadow:inset 0 1px 0 #ffffff1c,0 0 18px var(--glow)}
+.search-hint{display:block;margin:-10px 2px 0;color:var(--mut);font-size:11px;line-height:1.45}
 .btn.pri{background:linear-gradient(145deg,color-mix(in srgb,var(--ac),white 20%),var(--ac) 55%,color-mix(in srgb,var(--ac),#171d3d 30%));border-color:color-mix(in srgb,var(--ac),white 20%);box-shadow:inset 0 1px 0 #ffffff55,0 4px 0 color-mix(in srgb,var(--ac),#10142b 55%),0 9px 24px var(--glow)}
 main{gap:0;padding:14px;perspective:1600px;isolation:isolate}
 aside{position:relative;background:linear-gradient(150deg,color-mix(in srgb,var(--p),white 3%),var(--p) 65%,color-mix(in srgb,var(--p),var(--ac) 5%));border:1px solid color-mix(in srgb,var(--bd),white 6%);border-radius:18px;box-shadow:0 16px 36px #0002,inset 0 1px 0 #ffffff12;gap:16px;padding:17px 14px;transform:rotateY(1deg);transform-style:preserve-3d}
@@ -152,6 +153,8 @@ dialog{border-radius:18px;box-shadow:0 28px 90px #0008}#toast{border:1px solid #
     <div><div class="row"><label>Top P</label><span id="pv"></span></div><input type="range" id="top" min="0" max="1" step="0.05"></div>
     <label class="chk"><input type="checkbox" id="stream">Stream responses</label>
     <label class="chk"><input type="checkbox" id="json">JSON mode</label>
+    <label class="chk"><input type="checkbox" id="googleSearch">Open Google search on send</label>
+    <small class="search-hint">Opens a separate Google tab. Search results are not added to the model context.</small>
     <div><label>Last response</label><div class="stats">
       <div class="st"><b id="s1">–</b><small>tokens/sec</small></div><div class="st"><b id="s2">–</b><small>first token ms</small></div>
       <div class="st"><b id="s3">–</b><small>output tokens</small></div><div class="st"><b id="s4">–</b><small>total s</small></div></div></div>
@@ -179,7 +182,7 @@ function normalizeChat(c){
   if(!id||id.length>200)return null;
   return {id,title:String(c.title??'New chat').slice(0,500),msgs:c.msgs.filter(m=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string').map(m=>({role:m.role,content:m.content, ...(typeof m.meta==='string'?{meta:m.meta.slice(0,1000)}:{})}))};
 }
-const saved=ld('pg2s',{}),defaults={prov:'groq',base:P.groq.u,model:P.groq.m[0],keys:{},loaded:{},sys:'You are a helpful assistant.',temp:.7,max:1024,top:1,stream:true,json:false,theme:'dark'};
+const saved=ld('pg2s',{}),defaults={prov:'groq',base:P.groq.u,model:P.groq.m[0],keys:{},loaded:{},sys:'You are a helpful assistant.',temp:.7,max:1024,top:1,stream:true,json:false,googleSearch:false,theme:'dark'};
 let S=Object.assign({},defaults,saved&&typeof saved==='object'&&!Array.isArray(saved)?saved:{});
 if(!P[S.prov])S.prov='groq';
 if(typeof S.base!=='string')S.base=P[S.prov].u;
@@ -194,7 +197,7 @@ if(!S.loaded||typeof S.loaded!=='object'||Array.isArray(S.loaded))S.loaded={};
 S.loaded=Object.fromEntries(Object.entries(S.loaded).filter(([,v])=>Array.isArray(v)).map(([k,v])=>[k,v.filter(x=>typeof x==='string'&&x.length<500)]));
 S.temp=Number(S.temp);S.max=Number(S.max);S.top=Number(S.top);
 if(!['dark','light'].includes(S.theme))S.theme='dark';
-S.stream=Boolean(S.stream);S.json=Boolean(S.json);
+S.stream=Boolean(S.stream);S.json=Boolean(S.json);S.googleSearch=Boolean(S.googleSearch);
 let C=(Array.isArray(ld('pg2c',[]))?ld('pg2c',[]):[]).map(normalizeChat).filter(Boolean),cur=null,busy=false,ctrls=[],mode='chat',lang='curl';
 const save=()=>{sv('pg2s',S);sv('pg2c',C)};
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',4500)}
@@ -279,9 +282,10 @@ const fmt=r=>r.model+' · '+r.tok+' tok · '+r.tps+' tok/s · '+r.total.toFixed(
 function stats(r){$('#s1').textContent=r.tps||'–';$('#s2').textContent=r.ttft;$('#s3').textContent=r.tok;$('#s4').textContent=r.total.toFixed(2)}
 function ready(){if(!S.keys[S.prov]&&S.prov!=='ollama'){toast('Add your API key in the right panel first.');return false}return true}
 function setBusy(b){busy=b;$('#send').textContent=b?'Stop':'Send'}
+function openGoogleSearch(query){if(S.googleSearch)window.open('https://www.google.com/search?q='+encodeURIComponent(query),'_blank','noopener,noreferrer')}
 async function send(){
   if(busy)return;const t=$('#in').value.trim();if(!t||!ready())return;
-  $('#in').value='';$('#in').style.height='auto';
+  openGoogleSearch(t);$('#in').value='';$('#in').style.height='auto';
   if(mode==='cmp')return compare(t);
   if(!chat())newChat();const ch=chat();
   ch.msgs.push({role:'user',content:t});if(ch.title==='New chat'){ch.title=t.slice(0,40);renderList()}
@@ -324,7 +328,7 @@ function syncUI(){
   $('#prov').innerHTML=Object.keys(P).map(k=>'<option value="'+k+'">'+P[k].n+'</option>').join('');
   $('#prov').value=S.prov;$('#key').value=S.keys[S.prov]||'';$('#base').value=S.base;$('#sys').value=S.sys;
   ['temp','max','top'].forEach(k=>{$('#'+k).value=S[k];$('#'+{temp:'tv',max:'mv',top:'pv'}[k]).textContent=S[k]});
-  $('#stream').checked=S.stream;$('#json').checked=S.json;fillModels();
+  $('#stream').checked=S.stream;$('#json').checked=S.json;$('#googleSearch').checked=S.googleSearch;fillModels();
 }
 $('#prov').onchange=e=>{S.prov=e.target.value;if(P[S.prov].u)S.base=P[S.prov].u;S.model=models()[0];syncUI();save()};
 $('#key').onchange=e=>{S.keys[S.prov]=e.target.value;save()};
@@ -335,6 +339,7 @@ $('#sys').onchange=e=>{S.sys=e.target.value;save()};
 $('#preset').onchange=e=>{if(!e.target.value)return;const [t,p]=e.target.value.split(',').map(Number);S.temp=t;S.top=p;syncUI();save();$('#preset').value=e.target.value};
 $('#stream').onchange=e=>{S.stream=e.target.checked;save()};
 $('#json').onchange=e=>{S.json=e.target.checked;save()};
+$('#googleSearch').onchange=e=>{S.googleSearch=e.target.checked;save();toast(S.googleSearch?'Google search will open for each message.':'Google search on send is off.')};
 $('#load').onclick=async()=>{
   try{const h={};if(S.keys[S.prov])h.Authorization='Bearer '+S.keys[S.prov];
     const j=await(await fetch(S.base.replace(/\/$/,'')+'/models',{headers:h})).json();
