@@ -172,10 +172,31 @@ const P={
 };
 function ld(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}}
 function sv(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-let S=Object.assign({prov:'groq',base:P.groq.u,model:P.groq.m[0],keys:{},loaded:{},sys:'You are a helpful assistant.',temp:.7,max:1024,top:1,stream:true,json:false,theme:'dark'},ld('pg2s',{}));
-let C=ld('pg2c',[]),cur=null,busy=false,ctrls=[],mode='chat',lang='curl';
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function normalizeChat(c){
+  if(!c||typeof c!=='object'||!Array.isArray(c.msgs))return null;
+  const id=String(c.id??'');
+  if(!id||id.length>200)return null;
+  return {id,title:String(c.title??'New chat').slice(0,500),msgs:c.msgs.filter(m=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string').map(m=>({role:m.role,content:m.content, ...(typeof m.meta==='string'?{meta:m.meta.slice(0,1000)}:{})}))};
+}
+const saved=ld('pg2s',{}),defaults={prov:'groq',base:P.groq.u,model:P.groq.m[0],keys:{},loaded:{},sys:'You are a helpful assistant.',temp:.7,max:1024,top:1,stream:true,json:false,theme:'dark'};
+let S=Object.assign({},defaults,saved&&typeof saved==='object'&&!Array.isArray(saved)?saved:{});
+if(!P[S.prov])S.prov='groq';
+if(typeof S.base!=='string')S.base=P[S.prov].u;
+if(typeof S.model!=='string')S.model=P[S.prov].m[0];
+if(typeof S.sys!=='string')S.sys=defaults.sys;
+if(!Number.isFinite(+S.temp)||S.temp<0||S.temp>2)S.temp=defaults.temp;
+if(!Number.isFinite(+S.max)||S.max<64||S.max>8192)S.max=defaults.max;
+if(!Number.isFinite(+S.top)||S.top<0||S.top>1)S.top=defaults.top;
+if(!S.keys||typeof S.keys!=='object'||Array.isArray(S.keys))S.keys={};
+S.keys=Object.fromEntries(Object.entries(S.keys).filter(([,v])=>typeof v==='string'));
+if(!S.loaded||typeof S.loaded!=='object'||Array.isArray(S.loaded))S.loaded={};
+S.loaded=Object.fromEntries(Object.entries(S.loaded).filter(([,v])=>Array.isArray(v)).map(([k,v])=>[k,v.filter(x=>typeof x==='string'&&x.length<500)]));
+S.temp=Number(S.temp);S.max=Number(S.max);S.top=Number(S.top);
+if(!['dark','light'].includes(S.theme))S.theme='dark';
+S.stream=Boolean(S.stream);S.json=Boolean(S.json);
+let C=(Array.isArray(ld('pg2c',[]))?ld('pg2c',[]):[]).map(normalizeChat).filter(Boolean),cur=null,busy=false,ctrls=[],mode='chat',lang='curl';
 const save=()=>{sv('pg2s',S);sv('pg2c',C)};
-const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',4500)}
 document.documentElement.dataset.theme=S.theme;
 
@@ -202,9 +223,9 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-copy]');if
 
 /* chats */
 const chat=()=>C.find(c=>c.id===cur);
-function newChat(){const c={id:Date.now()+'',title:'New chat',msgs:[]};C.unshift(c);cur=c.id;save();renderList();renderChat()}
+function newChat(){const c={id:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2),title:'New chat',msgs:[]};C.unshift(c);cur=c.id;save();renderList();renderChat()}
 function renderList(){
-  $('#list').innerHTML=C.map(c=>'<div class="ci'+(c.id===cur?' on':'')+'" data-id="'+c.id+'"><span>'+esc(c.title)+'</span><b data-del="'+c.id+'">✕</b></div>').join('');
+  $('#list').innerHTML=C.map(c=>'<div class="ci'+(c.id===cur?' on':'')+'" data-id="'+esc(c.id)+'"><span>'+esc(c.title)+'</span><b data-del="'+esc(c.id)+'" aria-label="Delete '+esc(c.title)+'">✕</b></div>').join('');
 }
 $('#list').onclick=e=>{
   const d=e.target.closest('[data-del]');
@@ -242,7 +263,7 @@ async function run(msgs,model,onText,signal,retry=true){
   if(key)headers.Authorization='Bearer '+key;
   const r=await fetch(S.base.replace(/\/$/,'')+'/chat/completions',{method:'POST',signal,headers,body:JSON.stringify(payload(msgs,model,S.stream))});
   if(r.status===429&&retry){const w=Math.min(+r.headers.get('retry-after')||3,15);toast('Rate limited. Retrying in '+w+'s…');await sleep(w*1000);return run(msgs,model,onText,signal,false)}
-  if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error((j.error&&j.error.message)||('HTTP '+r.status))}
+  if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error((typeof j.error==='string'?j.error:j.error?.message)||j.message||('Request failed (HTTP '+r.status+')'))}
   let out='',n=0,tf=0,u=null;
   if(S.stream){
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
@@ -287,7 +308,7 @@ async function compare(t){
   setBusy(false);
 }
 $('#send').onclick=()=>busy?ctrls.forEach(c=>c.abort()):send();
-$('#in').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}};
+$('#in').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){if(e.isComposing||e.nativeEvent?.isComposing||e.keyCode===229)return;e.preventDefault();send()}};
 $('#in').oninput=e=>{e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,200)+'px'};
 document.addEventListener('keydown',e=>{if(e.key==='Escape')ctrls.forEach(c=>c.abort());if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();newChat()}});
 
@@ -327,9 +348,9 @@ function setMode(m){mode=m;$('#chatv').style.display=m==='chat'?'flex':'none';$(
 $('#mChat').onclick=()=>setMode('chat');$('#mCmp').onclick=()=>setMode('cmp');
 
 /* export / import */
-$('#exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(C,null,2)],{type:'application/json'}));a.download='playground-chats.json';a.click()};
+$('#exp').onclick=()=>{const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.stringify(C,null,2)],{type:'application/json'}));a.href=url;a.download='playground-chats.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 $('#imp').onclick=()=>$('#file').click();
-$('#file').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!Array.isArray(j))throw 0;C=j.concat(C);cur=C[0]&&C[0].id;save();renderList();renderChat();toast('Imported '+j.length+' chats')}catch(x){toast('Invalid file')}e.target.value=''};
+$('#file').onchange=async e=>{try{const file=e.target.files?.[0];if(!file) return;const j=JSON.parse(await file.text());if(!Array.isArray(j))throw new Error('Expected an array');const imported=j.map(normalizeChat).filter(Boolean);if(!imported.length&&j.length)throw new Error('No valid chats found');const existing=new Set(C.map(c=>c.id));imported.forEach(c=>{if(existing.has(c.id))c.id=globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2);existing.add(c.id)});C=imported.concat(C);cur=C[0]?.id||null;save();renderList();renderChat();toast('Imported '+imported.length+' chats')}catch(x){toast('Invalid file: '+(x.message||'unexpected format'))}finally{e.target.value=''}};
 
 /* code view */
 function genCode(){
