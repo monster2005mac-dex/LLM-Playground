@@ -153,8 +153,8 @@ dialog{border-radius:18px;box-shadow:0 28px 90px #0008}#toast{border:1px solid #
     <div><div class="row"><label>Top P</label><span id="pv"></span></div><input type="range" id="top" min="0" max="1" step="0.05"></div>
     <label class="chk"><input type="checkbox" id="stream">Stream responses</label>
     <label class="chk"><input type="checkbox" id="json">JSON mode</label>
-    <label class="chk"><input type="checkbox" id="googleSearch">Open Google search on send</label>
-    <small class="search-hint">Opens a separate Google tab. Search results are not added to the model context.</small>
+    <label class="chk"><input type="checkbox" id="googleSearch">Internet access: open Google on send</label>
+    <small class="search-hint">Opens your prompt in a new Google tab. Results are not added to the model context.</small>
     <div><label>Last response</label><div class="stats">
       <div class="st"><b id="s1">–</b><small>tokens/sec</small></div><div class="st"><b id="s2">–</b><small>first token ms</small></div>
       <div class="st"><b id="s3">–</b><small>output tokens</small></div><div class="st"><b id="s4">–</b><small>total s</small></div></div></div>
@@ -182,7 +182,7 @@ function normalizeChat(c){
   if(!id||id.length>200)return null;
   return {id,title:String(c.title??'New chat').slice(0,500),msgs:c.msgs.filter(m=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string').map(m=>({role:m.role,content:m.content, ...(typeof m.meta==='string'?{meta:m.meta.slice(0,1000)}:{})}))};
 }
-const saved=ld('pg2s',{}),defaults={prov:'groq',base:P.groq.u,model:P.groq.m[0],keys:{},loaded:{},sys:'You are a helpful assistant.',temp:.7,max:1024,top:1,stream:true,json:false,googleSearch:false,theme:'dark'};
+const saved=ld('pg2s',{}),defaults={prov:'groq',base:P.groq.u,model:P.groq.m[0],keys:{},loaded:{},sys:'You are a helpful assistant.',temp:.7,max:1024,top:1,stream:true,json:false,googleSearch:true,googleSearchConfigured:false,theme:'dark'};
 let S=Object.assign({},defaults,saved&&typeof saved==='object'&&!Array.isArray(saved)?saved:{});
 if(!P[S.prov])S.prov='groq';
 if(typeof S.base!=='string')S.base=P[S.prov].u;
@@ -197,7 +197,7 @@ if(!S.loaded||typeof S.loaded!=='object'||Array.isArray(S.loaded))S.loaded={};
 S.loaded=Object.fromEntries(Object.entries(S.loaded).filter(([,v])=>Array.isArray(v)).map(([k,v])=>[k,v.filter(x=>typeof x==='string'&&x.length<500)]));
 S.temp=Number(S.temp);S.max=Number(S.max);S.top=Number(S.top);
 if(!['dark','light'].includes(S.theme))S.theme='dark';
-S.stream=Boolean(S.stream);S.json=Boolean(S.json);S.googleSearch=Boolean(S.googleSearch);
+S.stream=Boolean(S.stream);S.json=Boolean(S.json);S.googleSearch=Boolean(S.googleSearch);S.googleSearchConfigured=Boolean(S.googleSearchConfigured);if(!S.googleSearchConfigured)S.googleSearch=true;
 let C=(Array.isArray(ld('pg2c',[]))?ld('pg2c',[]):[]).map(normalizeChat).filter(Boolean),cur=null,busy=false,ctrls=[],mode='chat',lang='curl';
 const save=()=>{sv('pg2s',S);sv('pg2c',C)};
 function toast(t){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>e.style.display='none',4500)}
@@ -339,7 +339,7 @@ $('#sys').onchange=e=>{S.sys=e.target.value;save()};
 $('#preset').onchange=e=>{if(!e.target.value)return;const [t,p]=e.target.value.split(',').map(Number);S.temp=t;S.top=p;syncUI();save();$('#preset').value=e.target.value};
 $('#stream').onchange=e=>{S.stream=e.target.checked;save()};
 $('#json').onchange=e=>{S.json=e.target.checked;save()};
-$('#googleSearch').onchange=e=>{S.googleSearch=e.target.checked;save();toast(S.googleSearch?'Google search will open for each message.':'Google search on send is off.')};
+$('#googleSearch').onchange=e=>{S.googleSearch=e.target.checked;S.googleSearchConfigured=true;save();toast(S.googleSearch?'Google search will open for each message.':'Google search on send is off.')};
 $('#load').onclick=async()=>{
   try{const h={};if(S.keys[S.prov])h.Authorization='Bearer '+S.keys[S.prov];
     const j=await(await fetch(S.base.replace(/\/$/,'')+'/models',{headers:h})).json();
