@@ -107,6 +107,11 @@ dialog{border-radius:18px;box-shadow:0 28px 90px #0008}#toast{border:1px solid #
 @media(max-width:1000px){main{padding:8px}.center{transform:none}aside{border-radius:0;transform:none!important}#left{margin-right:0}#right{margin-left:0;width:min(310px,88vw)}#msgs{padding:22px 14px}}
 @media(max-width:600px){header{min-height:58px;padding:9px 10px;gap:6px}.logo{font-size:13px;margin-right:2px}.logo i{width:22px;height:22px}.btn{padding:6px 9px}main{padding:6px}.center{border-radius:15px}.composer{padding:10px}.empty{padding:20px 8px}.chips{gap:8px}.chip{font-size:12px;padding:7px 10px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* v2 upgrades */
+table{border-collapse:collapse;margin:8px 0;font-size:13px}th,td{border:1px solid var(--bd);padding:5px 9px;text-align:left}th{background:var(--p2)}
+.ch .btn{margin-left:6px}#q{margin-top:2px}.sub{display:flex;flex-direction:column;gap:6px}.sub .row .f{width:96px}
+.cbox .btn.sm{padding:6px 9px}#libl .ci b{padding:0 4px}
 </style>
 </head>
 <body>
@@ -116,14 +121,14 @@ dialog{border-radius:18px;box-shadow:0 28px 90px #0008}#toast{border:1px solid #
   <button class="btn on" id="mChat">Chat</button><button class="btn" id="mCmp">Compare</button>
   <div class="sp"></div>
   <button class="btn" id="codeBtn">&lt;/&gt; Code</button>
-  <button class="btn" id="exp">Export</button><button class="btn" id="imp">Import</button>
+  <button class="btn" id="lib">Prompts</button><button class="btn" id="mdx" title="Export chat as Markdown">MD</button><button class="btn" id="hlp" title="Shortcuts (Ctrl+/)">?</button><button class="btn" id="exp">Export</button><button class="btn" id="imp">Import</button>
   <button class="btn" id="theme">Theme</button>
   <button class="btn mob" id="tr">⚙</button>
   <input type="file" id="file" accept=".json" hidden>
 </header>
 <main>
   <aside id="left">
-    <button class="btn pri" id="newc">+ New chat</button>
+    <button class="btn pri" id="newc">+ New chat</button><input class="f" id="q" placeholder="Search chats…" aria-label="Search chats">
     <div id="list"></div>
   </aside>
   <section class="center">
@@ -138,7 +143,7 @@ dialog{border-radius:18px;box-shadow:0 28px 90px #0008}#toast{border:1px solid #
     </div>
     <div class="composer"><div class="cbox">
       <textarea id="in" rows="1" placeholder="Message… (Enter to send, Shift+Enter for new line, Esc to stop)"></textarea>
-      <button class="btn pri" id="send">Send</button>
+      <button class="btn sm" id="att" title="Attach text/code file (or drop one here)">📎</button><button class="btn sm" id="mic" title="Voice input">🎤</button><input type="file" id="attf" multiple hidden><button class="btn pri" id="send">Send</button>
     </div></div>
   </section>
   <aside id="right">
@@ -155,12 +160,23 @@ dialog{border-radius:18px;box-shadow:0 28px 90px #0008}#toast{border:1px solid #
     <label class="chk"><input type="checkbox" id="json">JSON mode</label>
     <label class="chk"><input type="checkbox" id="googleSearch">Internet access: open Google on send</label>
     <small class="search-hint">Opens your prompt in a new Google tab. Results are not added to the model context.</small>
-    <div><label>Last response</label><div class="stats">
+    <div class="sub"><label>Internet access</label><select class="f" id="web"><option value="off">Off</option><option value="wiki">Wikipedia search (free, no key)</option><option value="tavily">Web search – Tavily (API key)</option><option value="native">Native (Groq Compound / OpenRouter :online)</option></select><div id="tkeyw"><input class="f" id="tkey" type="password" placeholder="Tavily API key" autocomplete="off"></div><small class="search-hint" style="margin:0">Links in your message are read automatically. Sources are listed under each reply.</small></div>
+<div class="sub"><label>Advanced</label>
+<div class="row"><span>Frequency penalty</span><input class="f" type="number" step="0.1" min="-2" max="2" data-s="fp"></div>
+<div class="row"><span>Presence penalty</span><input class="f" type="number" step="0.1" min="-2" max="2" data-s="pp"></div>
+<input class="f" placeholder="Stop sequences (separate with |)" data-s="stop">
+<input class="f" type="number" placeholder="Seed (optional)" data-s="seed">
+<input class="f" type="number" step="0.01" placeholder="Price per 1M output tokens ($)" data-s="price"></div>
+<div><label>Usage</label><div class="stats"><div class="st"><b id="ctx">–</b><small>context ≈ tokens</small></div><div class="st"><b id="used">0</b><small>session tokens</small></div><div class="st"><b id="cost">–</b><small>est. cost</small></div><div class="st"><button class="btn sm" id="rst">Reset usage</button></div></div></div>
+<div><label>Last response</label><div class="stats">
       <div class="st"><b id="s1">–</b><small>tokens/sec</small></div><div class="st"><b id="s2">–</b><small>first token ms</small></div>
       <div class="st"><b id="s3">–</b><small>output tokens</small></div><div class="st"><b id="s4">–</b><small>total s</small></div></div></div>
   </aside>
 </main>
 <div id="toast"></div>
+<dialog id="libd"><div class="tabs"><b>Prompt library</b><small style="color:var(--mut)">click to use as system prompt</small></div><div id="libl" style="padding:10px;max-height:50vh;overflow:auto"></div><div class="dh"><button class="btn" id="libs">Save current system prompt</button><button class="btn" data-close>Close</button></div></dialog>
+<dialog id="pv" style="width:min(900px,95vw)"><iframe id="pvf" title="Preview" sandbox="allow-scripts" style="width:100%;height:60vh;border:0;background:#fff"></iframe><div class="dh"><span></span><button class="btn" data-close>Close</button></div></dialog>
+<dialog id="hd"><div style="padding:16px;line-height:2"><b>Shortcuts &amp; tips</b><br>Enter send · Shift+Enter newline · Esc stop<br>Ctrl/⌘+K new chat · Ctrl/⌘+/ this help<br>Double-click a chat to rename · drop files on the composer<br>HTML/SVG code blocks have a Preview button</div><div class="dh"><span></span><button class="btn" data-close>Close</button></div></dialog>
 <dialog id="dlg"><div class="tabs"><button class="btn on" data-l="curl">cURL</button><button class="btn" data-l="python">Python</button><button class="btn" data-l="js">JavaScript</button></div>
 <pre id="code"></pre><div class="dh"><button class="btn" id="copy">Copy</button><button class="btn" id="close">Close</button></div></dialog>
 <script>
@@ -370,6 +386,132 @@ $('#copy').onclick=()=>{try{navigator.clipboard.writeText($('#code').textContent
 document.querySelectorAll('.tabs .btn').forEach(b=>b.onclick=()=>{lang=b.dataset.l;document.querySelectorAll('.tabs .btn').forEach(x=>x.classList.toggle('on',x===b));$('#code').textContent=genCode()});
 
 syncUI();cur=C[0]?C[0].id:null;if(!cur)newChat();else{renderList();renderChat()}
+</script>
+
+<script>
+/* ===== v2 upgrades ===== */
+(()=>{
+const D={fp:0,pp:0,seed:'',stop:'',price:'',used:0,lib:[]};
+for(const k in D)if(S[k]===undefined)S[k]=D[k];
+if(!Array.isArray(S.lib))S.lib=[];
+const PERS=[['Code reviewer','You are a meticulous senior code reviewer. Point out bugs, security issues and improvements, with short fixed snippets.'],['ELI5 teacher','Explain everything simply with analogies, as to a curious 10-year-old.'],['Socratic tutor','Never give the answer outright. Guide the learner with short probing questions.'],['JSON only','Reply with valid JSON only. No prose and no markdown fences.'],['Translator','Translate the user text into the language they request; keep tone and formatting.'],['Prompt engineer','Rewrite the user prompt to be clearer and more effective, then explain what you changed.']];
+
+/* extra request params */
+const _payload=payload;
+payload=function(m,model,st){const p=_payload(m,model,st);
+  if(+S.fp)p.frequency_penalty=+S.fp;if(+S.pp)p.presence_penalty=+S.pp;
+  if(S.seed!==''&&S.seed!=null)p.seed=+S.seed;
+  const s=String(S.stop||'').split('|').map(x=>x.replace(/\\n/g,'\n')).filter(Boolean).slice(0,4);if(s.length)p.stop=s;return p};
+
+/* markdown: tables + preview button */
+const _md=md;
+md=function(t){const tb=[];
+  t=t.split(/(```[\s\S]*?(?:```|$))/).map((s,i)=>i%2?s:s.replace(/((?:^[ \t]*\|.*\|[ \t]*(?:\n|$)){2,})/gm,b=>{
+    const r=b.trim().split('\n');if(r.length<2||!/^\|?\s*:?-{2,}/.test(r[1].trim().replace(/^\|/,'').trim()))return b;
+    const c=x=>x.trim().replace(/^\||\|$/g,'').split('|').map(y=>inl(esc(y.trim())));
+    tb.push('<div style="overflow:auto"><table><thead><tr>'+c(r[0]).map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'+r.slice(2).map(l=>'<tr>'+c(l).map(x=>'<td>'+x+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>');
+    return '\n\u0002'+(tb.length-1)+'\u0002\n'})).join('');
+  return _md(t).replace(/<p>\u0002(\d+)\u0002<\/p>/g,(m,i)=>tb[i]).replace(/<span>(html|svg)<\/span>/gi,'<span>$1</span><button class="btn sm" data-prev>Preview</button>')};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-prev]');if(!b)return;$('#pvf').srcdoc=b.closest('.cb').querySelector('pre').textContent;$('#pv').showModal()});
+
+/* estimates + usage */
+const est=()=>{const ch=chat();$('#ctx').textContent='~'+Math.ceil(((S.sys||'')+(ch?ch.msgs.map(m=>m.content).join(' '):'')+($('#in').value||'')).length/4)};
+const cost=()=>{$('#used').textContent=S.used;const p=parseFloat(S.price);$('#cost').textContent=p>0?'$'+(S.used*p/1e6).toFixed(4):'–'};
+const _st=stats;stats=function(r){_st(r);S.used=(+S.used||0)+(r.tok||0);cost();save()};
+$('#rst').onclick=()=>{S.used=0;cost();save()};
+$('#in').addEventListener('input',est);
+document.querySelectorAll('[data-s]').forEach(e=>{e.value=S[e.dataset.s]??'';e.oninput=()=>{S[e.dataset.s]=e.value;save();cost()}});
+
+/* per-message actions */
+const _rc=renderChat;
+renderChat=function(){_rc();document.querySelectorAll('#msgs .m').forEach((el,i)=>{const mt=el.querySelector('.meta');if(mt)mt.insertAdjacentHTML('beforeend','<button data-x="say" data-i="'+i+'">read aloud</button><button data-x="fork" data-i="'+i+'">fork</button><button data-x="del" data-i="'+i+'">delete</button>')});est()};
+$('#msgs').addEventListener('click',e=>{const b=e.target.closest('[data-x]');if(!b)return;const ch=chat(),i=+b.dataset.i;
+  if(b.dataset.x==='say'){if(speechSynthesis.speaking){speechSynthesis.cancel();return}speechSynthesis.speak(new SpeechSynthesisUtterance(ch.msgs[i].content.replace(/```[\s\S]*?```/g,' code block ')))}
+  if(b.dataset.x==='fork'){const c={id:Date.now()+'-'+Math.random().toString(36).slice(2),title:'Fork: '+ch.title.slice(0,32),msgs:ch.msgs.slice(0,i+1).map(m=>({...m}))};C.unshift(c);cur=c.id;save();renderList();renderChat();toast('Forked into a new chat')}
+  if(b.dataset.x==='del'&&!busy){ch.msgs.splice(i,1);save();renderChat()}});
+
+/* chat search + rename */
+function filt(){const q=$('#q').value.toLowerCase();document.querySelectorAll('#list .ci').forEach(el=>{const c=C.find(x=>x.id===el.dataset.id);el.style.display=!q||(c&&(c.title+' '+c.msgs.map(m=>m.content).join(' ')).toLowerCase().includes(q))?'':'none'})}
+const _rl=renderList;renderList=function(){_rl();filt()};$('#q').oninput=filt;
+$('#list').addEventListener('dblclick',e=>{const i=e.target.closest('.ci');if(!i)return;const c=C.find(x=>x.id===i.dataset.id),n=prompt('Rename chat',c.title);if(n&&n.trim()){c.title=n.trim().slice(0,80);save();renderList()}});
+
+/* export markdown */
+$('#mdx').onclick=()=>{const ch=chat();if(!ch||!ch.msgs.length)return toast('Nothing to export yet');
+  const s='# '+ch.title+'\n\n'+ch.msgs.map(m=>'**'+(m.role==='user'?'You':'Assistant')+'**\n\n'+m.content).join('\n\n---\n\n');
+  const a=document.createElement('a'),u=URL.createObjectURL(new Blob([s],{type:'text/markdown'}));a.href=u;a.download=(ch.title.replace(/[^\w-]+/g,'_')||'chat')+'.md';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)};
+
+/* prompt library */
+let LA=[];
+function libR(){LA=PERS.map(p=>({n:p[0],t:p[1],b:1})).concat(S.lib.map((p,i)=>({n:p.n,t:p.t,i})));
+  $('#libl').innerHTML=LA.map((p,k)=>'<div class="ci" data-k="'+k+'"><span title="'+esc(p.t)+'">'+esc(p.n)+'</span>'+(p.b?'':'<b data-rm="'+p.i+'">✕</b>')+'</div>').join('')}
+$('#libl').onclick=e=>{const r=e.target.closest('[data-rm]');if(r){S.lib.splice(+r.dataset.rm,1);save();libR();return}
+  const i=e.target.closest('.ci');if(!i)return;S.sys=LA[+i.dataset.k].t;syncUI();save();$('#libd').close();toast('System prompt set: '+LA[+i.dataset.k].n)};
+$('#lib').onclick=()=>{libR();$('#libd').showModal()};
+$('#libs').onclick=()=>{const n=prompt('Name this system prompt');if(n&&n.trim()&&S.sys.trim()){S.lib.push({n:n.trim().slice(0,60),t:S.sys});save();libR()}};
+$('#hlp').onclick=()=>$('#hd').showModal();
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key==='/'){e.preventDefault();$('#hd').showModal()}});
+
+/* attachments (text files, drag & drop) + voice input */
+async function addFiles(fs){for(const f of fs){if(f.size>2e5){toast(f.name+' is too large (max 200 KB)');continue}
+  const t=await f.text();$('#in').value+=($('#in').value?'\n\n':'')+'File: '+f.name+'\n```\n'+t+'\n```'}
+  $('#in').dispatchEvent(new Event('input'))}
+$('#att').onclick=()=>$('#attf').click();$('#attf').onchange=e=>{addFiles([...e.target.files]);e.target.value=''};
+const cb=document.querySelector('.cbox');cb.ondragover=e=>e.preventDefault();cb.ondrop=e=>{e.preventDefault();addFiles([...e.dataTransfer.files])};
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null;
+$('#mic').onclick=()=>{if(!SR)return toast('Voice input is not supported in this browser');if(rec){rec.stop();return}
+  rec=new SR();rec.onresult=e=>{$('#in').value+=($('#in').value?' ':'')+e.results[0][0].transcript;$('#in').dispatchEvent(new Event('input'))};
+  rec.onend=()=>{rec=null;$('#mic').classList.remove('on')};rec.start();$('#mic').classList.add('on')};
+
+cost();renderList();renderChat();
+})();
+</script>
+
+<script>
+/* ===== v3: internet access ===== */
+(()=>{
+if(S.web===undefined)S.web='off';if(S.tkey===undefined)S.tkey='';
+['groq/compound-mini','groq/compound'].forEach(m=>{if(!P.groq.m.includes(m))P.groq.m.push(m)});
+$('#web').value=S.web;$('#tkey').value=S.tkey;
+const tk=()=>$('#tkeyw').style.display=S.web==='tavily'?'':'none';tk();
+$('#web').onchange=e=>{S.web=e.target.value;tk();save();fillModels()};
+$('#tkey').onchange=e=>{S.tkey=e.target.value.trim();save()};
+const clip=(s,n)=>String(s||'').replace(/\s+/g,' ').trim().slice(0,n);
+async function wiki(q,sg){
+  const u='https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=4&prop=extracts%7Cinfo&exintro=1&explaintext=1&exchars=800&inprop=url&format=json&origin=*&gsrsearch='+encodeURIComponent(q);
+  const j=await(await fetch(u,{signal:sg})).json();
+  return Object.values(j.query?.pages||{}).sort((a,b)=>a.index-b.index).map(p=>({title:p.title,url:p.fullurl,text:clip(p.extract,800)}))}
+async function tavily(q,sg){
+  if(!S.tkey)throw new Error('Add your Tavily API key (free at tavily.com) under Internet access');
+  const r=await fetch('https://api.tavily.com/search',{method:'POST',signal:sg,headers:{'Content-Type':'application/json',Authorization:'Bearer '+S.tkey},body:JSON.stringify({query:q,max_results:5})});
+  if(!r.ok)throw new Error('Tavily search failed (HTTP '+r.status+')');
+  return((await r.json()).results||[]).map(x=>({title:x.title,url:x.url,text:clip(x.content,900)}))}
+async function page(u,sg){try{const r=await fetch('https://r.jina.ai/'+u,{signal:sg});if(!r.ok)return null;return{title:'Page: '+u,url:u,text:clip(await r.text(),5000)}}catch(e){if(e.name==='AbortError')throw e;return null}}
+function native(m){
+  if(S.prov==='openrouter')return m.endsWith(':online')?m:m+':online';
+  if(S.prov==='groq')return/compound/.test(m)?m:'groq/compound-mini';
+  toast('Native web search works on Groq and OpenRouter. Use Tavily or Wikipedia for other providers.');return m}
+const _run=run;
+run=async function(msgs,model,onText,signal,retry=true){
+  let src=[];
+  if(retry&&S.web!=='off'){
+    const raw=msgs[msgs.length-1].content;
+    if(S.web==='native')model=native(model);
+    else{
+      const q=clip(raw.replace(/```[\s\S]*?```/g,' '),220),urls=(raw.match(/https?:\/\/[^\s)>\]]+/g)||[]).slice(0,2);
+      toast('Searching the web…');
+      try{const [res,...pg]=await Promise.all([(S.web==='tavily'?tavily:wiki)(q,signal),...urls.map(u=>page(u,signal))]);src=pg.filter(Boolean).concat(res)}
+      catch(e){if(e.name==='AbortError')throw e;toast('Web search failed: '+e.message)}
+      if(src.length){$('#toast').style.display='none';
+        const ctx=src.map((s,i)=>'['+(i+1)+'] '+s.title+' ('+s.url+')\n'+s.text).join('\n\n');
+        msgs=msgs.slice(0,-1).concat({role:'user',content:'Web results retrieved '+new Date().toUTCString()+':\n\n'+ctx+'\n\nUse these results when relevant and cite them like [1]. If they do not help, say so and answer from your own knowledge.\n\nQuestion: '+raw})}
+    }}
+  const r=await _run(msgs,model,onText,signal,retry);
+  if(src.length){r.text+='\n\n**Sources**\n'+src.map((s,i)=>(i+1)+'. ['+s.title.replace(/[\[\]]/g,'')+']('+s.url+')').join('\n');onText(r.text)}
+  return r};
+const _g=openGoogleSearch;openGoogleSearch=q=>{if(S.web==='off')_g(q)};
+fillModels();
+})();
 </script>
 </body>
 </html>
